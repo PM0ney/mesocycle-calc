@@ -2,11 +2,34 @@ import pandas as pd
 import random
 import os
 from datetime import datetime, timedelta
-from reportlab.lib.pagesizes import letter, portrait
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Paragraph,
+    Spacer,
+    Image,
+)
 from reportlab.lib import colors
+
+# =========================
+# COLORS
+# =========================
+
+COLOR_BLACK = colors.HexColor('#000000')
+COLOR_GOLD = colors.HexColor('#C9AE5D')
+COLOR_DARK_GOLD = colors.HexColor('#8B7520')
+COLOR_LIGHT_GOLD = colors.HexColor('#F9F6F0')
+
+ROW_BG_LIGHT = COLOR_LIGHT_GOLD
+ROW_BG_MED = colors.white  # alternate with white
+
+# =========================
+# CONFIGURATION
+# =========================
 
 TESTING_DATA_FILE = 'athlete_testing.csv'
 OUTPUT_DIR = 'output'
@@ -19,7 +42,7 @@ MESOCYCLES = [
         'weeks': 4,
         'main_intensity_min': 0.60,
         'main_intensity_max': 0.75,
-        'main_reps': '8-10',
+        'main_reps': '8–10',
         'main_sets': '3',
     },
     {
@@ -28,7 +51,7 @@ MESOCYCLES = [
         'weeks': 4,
         'main_intensity_min': 0.70,
         'main_intensity_max': 0.80,
-        'main_reps': '6-8',
+        'main_reps': '6–8',
         'main_sets': '3',
     },
     {
@@ -37,466 +60,414 @@ MESOCYCLES = [
         'weeks': 4,
         'main_intensity_min': 0.80,
         'main_intensity_max': 0.90,
-        'main_reps': '3-5',
+        'main_reps': '3–5',
         'main_sets': '4',
     },
 ]
 
-COLOR_BLACK = colors.HexColor('#000000')
-COLOR_GOLD = colors.HexColor('#C9AE5D')
-COLOR_DARK_GOLD = colors.HexColor('#8B7520')
-COLOR_LIGHT_GOLD = colors.HexColor('#F9F6F0')
+MAIN_LIFTS = {
+    'Monday': 'Back Squat',
+    'Tuesday': 'Bench Press',
+    'Wednesday': 'Deadlift',
+    'Thursday': 'Standing Military Press',
+}
 
-EXERCISE_POOLS = {
-    'Monday': {
-        'core': [
-            {
-                'name': 'Back Squat',
-                'reps': None,
-                'ref_max': 'Squat',
-                'factor': 'MAIN',
-                'is_core': True,
-                'notes': 'Main lift. Focus on hitting depth with a controlled descent. Pick spot on ceiling and stare.',
-            },
-        ],
-        'accessories': [
-            {'name': 'Front Squat', 'reps': '6-8', 'ref_max': 'Squat', 'factor': 0.65,
-             'is_core': False, 'notes': 'Lighter variation; keep elbows high.'},
-            {'name': 'Goblet Squat', 'reps': '10-12', 'ref_max': 'Squat', 'factor': 0.25,
-             'is_core': False, 'notes': 'Single DB; stay upright and control each rep.'},
-            {'name': 'Split Squat', 'reps': '8-10/leg', 'ref_max': 'Squat', 'factor': 0.30,
-             'is_core': False, 'notes': 'Total DB load; long stride, controlled depth.'},
-            {'name': 'Walking Lunges', 'reps': '8-10/leg', 'ref_max': 'Squat', 'factor': 0.25,
-             'is_core': False, 'notes': 'DB or bodyweight; big steps, knee behind toes.'},
-            {'name': 'Lateral Lunges', 'reps': '8-10/side', 'ref_max': 'Squat', 'factor': 0.20,
-             'is_core': False, 'notes': 'Light DB; sit back into hip, keep knee over foot.'},
-            {'name': 'Step-ups', 'reps': '8-10/leg', 'ref_max': 'Squat', 'factor': 0.25,
-             'is_core': False, 'notes': 'DB; drive through whole foot on box.'},
-            {'name': 'Leg Press', 'reps': '10-12', 'ref_max': 'Squat', 'factor': 0.70,
-             'is_core': False, 'notes': 'Control depth; no bouncing off the stops.'},
-            {'name': 'Glute Bridge', 'reps': '8-12', 'ref_max': 'Deadlift', 'factor': 0.60,
-             'is_core': False, 'notes': 'Drive hips up and pause at the top.'},
-            {'name': 'Glute-Ham Raise', 'reps': '6-10', 'ref_max': 'Deadlift', 'factor': 0.05,
-             'is_core': False, 'notes': 'Mostly bodyweight; use assistance if needed.'},
-            {'name': 'Hamstring Curl', 'reps': '10-15', 'ref_max': 'Deadlift', 'factor': 0.20,
-             'is_core': False, 'notes': 'Smooth reps; squeeze at the top.'},
-            {'name': 'Calf Raises', 'reps': '12-20', 'ref_max': 'Squat', 'factor': 0.25,
-             'is_core': False, 'notes': 'Full range of motion and pause at the top.'},
-            {'name': 'Plank', 'reps': '30-45 sec', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Keep body straight; no sagging hips.'},
-            {'name': 'Pallof Press', 'reps': '10-15/side', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Light band/cable; resist rotation.'},
-        ],
-    },
-    'Tuesday': {
-        'core': [
-            {
-                'name': 'Bench Press',
-                'reps': None,
-                'ref_max': 'Bench Press',
-                'factor': 'MAIN',
-                'is_core': True,
-                'notes': 'Main lift. Touch the chest and press under control.',
-            },
-        ],
-        'accessories': [
-            {'name': 'Close-Grip Bench', 'reps': '6-8', 'ref_max': 'Bench Press', 'factor': 0.65,
-             'is_core': False, 'notes': 'Hands just inside shoulders; tricep emphasis.'},
-            {'name': 'DB Flat Bench', 'reps': '8-10', 'ref_max': 'Bench Press', 'factor': 0.65,
-             'is_core': False, 'notes': 'Total DB load ≈ 60–70% of your bench max.'},
-            {'name': 'DB Incline Bench', 'reps': '8-10', 'ref_max': 'Bench Press', 'factor': 0.60,
-             'is_core': False, 'notes': 'Press up and slightly back; control the descent.'},
-            {'name': 'Push-ups', 'reps': '8-15', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Full range; add weight only when sets are easy.'},
-            {'name': 'Dips', 'reps': '6-10', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Assisted if needed; stay upright for triceps.'},
-            {'name': 'Barbell Row', 'reps': '8-10', 'ref_max': 'Bench Press', 'factor': 0.65,
-             'is_core': False, 'notes': 'Flat back; pull bar to mid-torso.'},
-            {'name': 'DB Row', 'reps': '8-12/arm', 'ref_max': 'Bench Press', 'factor': 0.30,
-             'is_core': False, 'notes': 'Use a bench for support; no torso twisting.'},
-            {'name': 'Skullcrushers', 'reps': '10-12', 'ref_max': 'Bench Press', 'factor': 0.25,
-             'is_core': False, 'notes': 'Lower to forehead; elbows stay in.'},
-            {'name': 'Cable Pushdowns', 'reps': '10-15', 'ref_max': 'Bench Press', 'factor': 0.20,
-             'is_core': False, 'notes': 'Keep upper arms pinned; small controlled movement.'},
-            {'name': 'Face Pulls', 'reps': '12-15', 'ref_max': 'Bench Press', 'factor': 0.15,
-             'is_core': False, 'notes': 'Pull to forehead with elbows high.'},
-            {'name': 'Band Pull-Aparts', 'reps': '15-20', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Keep arms straight; squeeze shoulder blades together.'},
-            {'name': 'Bicep Curls', 'reps': '10-12', 'ref_max': 'Bench Press', 'factor': 0.18,
-             'is_core': False, 'notes': 'No swinging; keep elbows near your sides.'},
-        ],
-    },
-    'Wednesday': {
-        'core': [
-            {
-                'name': 'Deadlift',
-                'reps': None,
-                'ref_max': 'Deadlift',
-                'factor': 'MAIN',
-                'is_core': True,
-                'notes': 'Main lift. Bar close, flat back, push floor away.',
-            },
-        ],
-        'accessories': [
-            {'name': 'Trap-Bar Deadlift', 'reps': '6-8', 'ref_max': 'Deadlift', 'factor': 0.65,
-             'is_core': False, 'notes': 'Handles at your sides; strong lockout at the top.'},
-            {'name': 'Romanian Deadlift', 'reps': '8-10', 'ref_max': 'Deadlift', 'factor': 0.60,
-             'is_core': False, 'notes': 'Soft knees; push hips back until hamstrings stretch.'},
-            {'name': 'Single-Leg RDL', 'reps': '8-10/leg', 'ref_max': 'Deadlift', 'factor': 0.25,
-             'is_core': False, 'notes': 'Use DBs; keep hips square, control balance.'},
-            {'name': 'Good Mornings', 'reps': '8-10', 'ref_max': 'Squat', 'factor': 0.35,
-             'is_core': False, 'notes': 'Light bar; hinge at hips, not spine.'},
-            {'name': 'KB Swings', 'reps': '12-15', 'ref_max': 'Deadlift', 'factor': 0.25,
-             'is_core': False, 'notes': 'Explosive hip snap; bell should float at chest height.'},
-            {'name': 'Bulgarian Split Squat', 'reps': '8-10/leg', 'ref_max': 'Squat', 'factor': 0.30,
-             'is_core': False, 'notes': 'Rear foot elevated; forward knee over toes.'},
-            {'name': 'Leg Curl', 'reps': '8-12', 'ref_max': 'Deadlift', 'factor': 0.20,
-             'is_core': False, 'notes': 'Hamstrings only; smooth range, no bouncing.'},
-            {'name': 'Reverse Hyperextensions', 'reps': '10-15', 'ref_max': 'Deadlift', 'factor': 0.25,
-             'is_core': False, 'notes': 'Light load; squeeze glutes at top.'},
-            {'name': 'Hanging Leg Raises', 'reps': '8-12', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Control the swing; raise legs with abs.'},
-        ],
-    },
-    'Thursday': {
-        'core': [
-            {
-                'name': 'Standing Military Press',
-                'reps': None,
-                'ref_max': 'Shoulder Press',
-                'factor': 'MAIN',
-                'is_core': True,
-                'notes': 'Strict press. No leg drive, lock out overhead.',
-            },
-        ],
-        'accessories': [
-            {'name': 'Push Press', 'reps': '5-6', 'ref_max': 'Shoulder Press', 'factor': 0.75,
-             'is_core': False, 'notes': 'Use a small leg dip to drive the bar overhead.'},
-            {'name': 'DB Shoulder Press', 'reps': '8-10', 'ref_max': 'Shoulder Press', 'factor': 0.75,
-             'is_core': False, 'notes': 'Total DB load ~70–80% of your press max.'},
-            {'name': 'Single-Arm Landmine Press', 'reps': '8-10/side', 'ref_max': 'Shoulder Press', 'factor': 0.50,
-             'is_core': False, 'notes': 'Press bar away at 45° angle; control the eccentric.'},
-            {'name': 'Pull-ups', 'reps': '6-10', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Strict reps; chin over bar, full hang each rep.'},
-            {'name': 'Chin-ups', 'reps': '6-10', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Underhand grip; focus on full range of motion.'},
-            {'name': 'Lat Pulldown', 'reps': '8-12', 'ref_max': 'Bench Press', 'factor': 0.55,
-             'is_core': False, 'notes': 'Pull bar to chest; slight lean back, no swinging.'},
-            {'name': 'TRX Rows', 'reps': '8-12', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Bodyweight row; walk feet forward to make it harder.'},
-            {'name': 'Lateral Raises', 'reps': '12-15', 'ref_max': 'Shoulder Press', 'factor': 0.08,
-             'is_core': False, 'notes': 'Light DBs; raise to shoulder height with control.'},
-            {'name': 'Rear Delt Flyes', 'reps': '12-15', 'ref_max': 'Shoulder Press', 'factor': 0.08,
-             'is_core': False, 'notes': 'Hinge forward; squeeze shoulder blades together.'},
-            {'name': 'Upright Rows', 'reps': '10-12', 'ref_max': 'Shoulder Press', 'factor': 0.25,
-             'is_core': False, 'notes': 'Light bar or DBs; stop at upper-chest height.'},
-            {'name': 'Band External Rotations', 'reps': '12-20', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Very light band; elbow at side, rotate forearm out.'},
-            {'name': "Farmer's Carries", 'reps': '20-30 yds', 'ref_max': None, 'factor': None,
-             'is_core': False, 'notes': 'Heavy DBs; stand tall and walk with control.'},
-            {'name': 'Shrugs', 'reps': '12-15', 'ref_max': 'Deadlift', 'factor': 0.20,
-             'is_core': False, 'notes': 'Lift shoulders straight up; hold briefly at top.'},
-        ],
-    },
+MAIN_LIFT_MAXES = {
+    'Back Squat': 'Back Squat',
+    'Bench Press': 'Bench Press',
+    'Deadlift': 'Deadlift',
+    'Standing Military Press': 'Shoulder Press',
 }
 
 BODYWEIGHT_EXERCISES = {
-    'Push-ups', 'Dips', 'TRX Rows', 'Plank', 'Pallof Press',
+    'Push-ups', 'Dips', 'TRX Rows',
     'Glute-Ham Raise', 'Hanging Leg Raises',
     'Band Pull-Aparts', 'Band External Rotations',
     'Pull-ups', 'Chin-ups', 'Reverse Hyperextensions'
 }
 
-def clean_test_value(val):
-    if pd.isna(val) or val == 'N/A' or val == '':
+EXERCISE_POOLS = {
+    'Monday': [
+        {'name': 'Back Squat', 'ref_max': 'Back Squat', 'factor': None},  # main lift row uses intensity
+        {'name': 'Front Squat', 'ref_max': 'Back Squat', 'factor': 0.85},
+        {'name': 'Calf Raises', 'ref_max': 'Back Squat', 'factor': 0.40},
+        {'name': 'Lateral Lunges', 'ref_max': None, 'factor': None},
+    ],
+    'Tuesday': [
+        {'name': 'Bench Press', 'ref_max': 'Bench Press', 'factor': None},  # main lift
+        {'name': 'Close-Grip Bench', 'ref_max': 'Bench Press', 'factor': 0.90},
+        {'name': 'DB Flat Bench', 'ref_max': 'Bench Press', 'factor': 0.60},
+        {'name': 'Dips', 'ref_max': None, 'factor': None},
+        {'name': 'Pallof Press', 'ref_max': 'Bench Press', 'factor': 0.25},  # weighted cable
+    ],
+    'Wednesday': [
+        {'name': 'Deadlift', 'ref_max': 'Deadlift', 'factor': None},  # main lift
+        {'name': 'Good Mornings', 'ref_max': 'Deadlift', 'factor': 0.60},
+        {'name': 'Hanging Leg Raises', 'ref_max': None, 'factor': None},
+        {'name': 'Trap-Bar Deadlift', 'ref_max': 'Deadlift', 'factor': 0.90},
+    ],
+    'Thursday': [
+        {'name': 'Standing Military Press', 'ref_max': 'Shoulder Press', 'factor': None},  # main lift
+        {'name': 'Band External Rotations', 'ref_max': None, 'factor': None},
+        {'name': 'Lat Pulldown', 'ref_max': 'Bench Press', 'factor': 0.65},
+        {'name': 'Farmer\'s Carries', 'ref_max': None, 'factor': None},
+        {'name': 'Pallof Press', 'ref_max': 'Bench Press', 'factor': 0.25},  # upper body only
+    ],
+}
+
+
+# =========================
+# HELPERS
+# =========================
+
+def parse_max(max_str):
+    if pd.isna(max_str) or max_str == 'N/A' or max_str == '':
         return None
-    if isinstance(val, str):
-        parts = val.split()
-        try:
-            return float(''.join(c for c in parts[0] if c.isdigit() or c == '.'))
-        except Exception:
-            return None
-    return float(val)
+    max_str = str(max_str).strip()
+    import re
+    m = re.search(r'(\d+(?:\.\d+)?)', max_str)
+    return float(m.group(1)) if m else None
 
 def calculate_target_weight(max_weight, factor, round_to=5):
     if max_weight is None or factor is None:
         return None
     target = max_weight * factor
-    return int(round(target / round_to) * round_to)
+    return round(target / round_to) * round_to
 
-def pick_day_exercises(day, random_state, prev_accessory_names=None):
-    cfg = EXERCISE_POOLS[day]
-    core = cfg['core']
-    accessories = cfg['accessories']
-    rs = random.Random(random_state + hash(day))
+def get_phase_intensity(phase_config, week_in_phase):
+    min_i = phase_config['main_intensity_min']
+    max_i = phase_config['main_intensity_max']
+    rng = max_i - min_i
+    prog = (week_in_phase - 1) / (phase_config['weeks'] - 1)
+    return min_i + prog * rng
 
-    if prev_accessory_names:
-        pool = [a for a in accessories if a['name'] not in prev_accessory_names]
-        if len(pool) < 3:
-            pool = accessories[:]
-    else:
-        pool = accessories[:]
+def load_athletes(filename):
+    if not os.path.exists(filename):
+        print(f"Error: {filename} not found.")
+        return []
+    df = pd.read_csv(filename)
+    athletes = []
+    for _, row in df.iterrows():
+        athletes.append({
+            'name': row['Name'],
+            'maxes': {
+                'Back Squat': parse_max(row.get('Squat')),  # CSV column name
+                'Bench Press': parse_max(row.get('Bench Press')),
+                'Deadlift': parse_max(row.get('Deadlift')),
+                'Shoulder Press': parse_max(row.get('Shoulder Press')),
+            }
+        })
+    return athletes
 
-    selected = rs.sample(pool, min(3, len(pool)))
-    return core + selected, [a['name'] for a in selected]
+def build_bold_target(text_before_at, weight_str):
+    """Return a Paragraph with weight/BW bolded after '@'."""
+    # text_before_at is like "3×10 @" or "3×10 @"
+    html = f"{text_before_at} <b>{weight_str}</b>"
+    return html
 
-def generate_week_template_for_meso(meso_cfg, global_week_number, prev_week_accessories_by_day):
-    weeks = meso_cfg['weeks']
-    i_min = meso_cfg['main_intensity_min']
-    i_max = meso_cfg['main_intensity_max']
-    local_week = ((global_week_number - 1) % weeks) + 1
-    intensity = i_min + (i_max - i_min) * ((local_week - 1) / max(weeks - 1, 1))
+def choose_phase_accessories_unique(phase_index):
+    """
+    Choose accessories for the whole phase with no repeats across days.
+    Returns dict: day -> list of 3 accessory dicts.
+    """
+    random.seed(100 + phase_index)
 
-    template = {}
-    new_prev = {}
+    # Flat pool of all accessories tagged by day, excluding main lifts
+    flat_pool = []
+    for day, exercises in EXERCISE_POOLS.items():
+        for e in exercises:
+            if e['factor'] is None and e['ref_max'] in MAIN_LIFT_MAXES.values():
+                continue  # skip main lift entries
+            flat_pool.append((day, e))
 
-    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday']:
-        prev_accessories = prev_week_accessories_by_day.get(day)
-        exs, used_accessories = pick_day_exercises(day, random_state=global_week_number,
-                                                   prev_accessory_names=prev_accessories)
+    # Shuffle to randomize global accessory order
+    random.shuffle(flat_pool)
 
-        rows = []
-        for ex in exs:
-            reps = ex['reps']
-            if ex['is_core']:
-                reps = meso_cfg['main_reps']
-            rows.append({
-                'name': ex['name'],
-                'reps': reps,
-                'ref_max': ex['ref_max'],
-                'factor': ex['factor'],
-                'is_core': ex['is_core'],
-                'notes': ex['notes'],
-            })
-        template[day] = {'rows': rows, 'intensity': intensity}
-        new_prev[day] = used_accessories
+    per_day = {d: [] for d in ['Monday', 'Tuesday', 'Wednesday', 'Thursday']}
+    used_names = set()
 
-    return template, new_prev
+    # Try to assign 3 unique accessories per day
+    for day in per_day.keys():
+        for day_tag, ex in flat_pool:
+            if day_tag != day:
+                continue
+            if ex['name'] in used_names:
+                continue
+            per_day[day].append(ex)
+            used_names.add(ex['name'])
+            if len(per_day[day]) >= 3:
+                break
 
-def instantiate_week_for_athlete(athlete_maxes, meso_cfg, global_week_number, template):
-    plan = {}
-    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday']:
-        day_info = template[day]
-        rows = []
-        for ex in day_info['rows']:
-            name = ex['name']
-            reps = ex['reps']
-            ref_max = ex['ref_max']
-            factor = ex['factor']
-            notes = ex['notes']
-            is_core = ex['is_core']
+    # If any day has less than 3, allow repeats (fallback)
+    for day in per_day.keys():
+        if len(per_day[day]) < 3:
+            remaining = [ex for d, ex in flat_pool if d == day]
+            while len(per_day[day]) < 3 and remaining:
+                ex = remaining.pop(0)
+                per_day[day].append(ex)
 
-            if is_core:
-                sets = meso_cfg['main_sets']
-                if factor == 'MAIN':
-                    if day == 'Monday':
-                        max_val = athlete_maxes.get('Squat')
-                    elif day == 'Tuesday':
-                        max_val = athlete_maxes.get('Bench Press')
-                    elif day == 'Wednesday':
-                        max_val = athlete_maxes.get('Deadlift')
-                    else:
-                        max_val = athlete_maxes.get('Shoulder Press')
-                    target = calculate_target_weight(max_val, day_info['intensity'])
-                else:
-                    max_val = athlete_maxes.get(ref_max) if ref_max else None
-                    target = calculate_target_weight(max_val, factor)
-            else:
-                sets = '3' if meso_cfg['name'] in ['Phase 1', 'Phase 2'] else '4'
-                if ref_max is None or factor is None:
-                    target = None
-                else:
-                    max_val = athlete_maxes.get(ref_max)
-                    target = calculate_target_weight(max_val, factor)
+    return per_day
 
-            rows.append({
-                'exercise': name,
-                'sets': sets,
-                'reps': reps,
-                'target_weight': target,
-                'notes': notes,
-            })
-        plan[day] = rows
-    return plan
 
-def build_week_pdf(filename, athlete_name, meso_cfg, global_week_number, local_week_number, start_date, week_plan):
+# =========================
+# PDF BUILDING
+# =========================
+
+def build_phase_pdf(athlete, mesocycle):
+    phase_name = mesocycle['name']
+    phase_start = mesocycle['start_date']
+    weeks = mesocycle['weeks']
+    phase_end = phase_start + timedelta(days=weeks * 7 - 1)
+
+    safe_name = athlete['name'].replace(' ', '_')
+    athlete_dir = os.path.join(OUTPUT_DIR, safe_name)
+    os.makedirs(athlete_dir, exist_ok=True)
+
+    pdf_filename = os.path.join(
+        athlete_dir,
+        f"{safe_name}_{phase_name.replace(' ', '')}.pdf"
+    )
+
     doc = SimpleDocTemplate(
-        filename,
-        pagesize=portrait(letter),
-        topMargin=0.35 * inch,
-        bottomMargin=0.35 * inch,
-        leftMargin=0.5 * inch,
-        rightMargin=0.5 * inch,
+        pdf_filename,
+        pagesize=landscape(letter),
+        topMargin=0.25 * inch,
+        bottomMargin=0.25 * inch,
+        leftMargin=0.25 * inch,
+        rightMargin=0.25 * inch,
     )
 
     story = []
+    styles = getSampleStyleSheet()
 
-    title_style = ParagraphStyle('TitleStyle', fontSize=24, textColor=COLOR_BLACK, alignment=1, spaceAfter=12)
-    story.append(Paragraph("<b>PHS FOOTBALL POWER PROGRAM</b>", title_style))
-    story.append(Spacer(1, 0.20 * inch))
-
+    # ---------- HEADER ----------
     if os.path.exists(LOGO_FILE):
-        try:
-            logo_obj = Image(LOGO_FILE)
-            logo_obj._restrictSize(1.6 * inch, 1.6 * inch)
-        except Exception as e:
-            print(f"Warning: could not load logo: {e}")
-            logo_obj = Paragraph(" ", getSampleStyleSheet()['Normal'])
+        left_logo = Image(LOGO_FILE, width=1.0*inch, height=1.0*inch)
+        right_logo = Image(LOGO_FILE, width=1.0*inch, height=1.0*inch)
     else:
-        print(f"Warning: logo file '{LOGO_FILE}' not found")
-        logo_obj = Paragraph(" ", getSampleStyleSheet()['Normal'])
+        left_logo = Paragraph(" ", styles['Normal'])
+        right_logo = Paragraph(" ", styles['Normal'])
 
-    logo_table = Table([[logo_obj]], colWidths=[7.0 * inch])
-    logo_table.setStyle(TableStyle([
+    title_style = ParagraphStyle(
+        'TitleLarge',
+        parent=styles['Heading1'],
+        fontSize=20,
+        leading=22,
+        alignment=1,
+        fontName='Helvetica-Bold',
+        spaceAfter=4,
+    )
+    date_range_str = f"{phase_start.strftime('%b %d')} – {phase_end.strftime('%b %d, %Y')}"
+    info_text = f"{athlete['name']} | {phase_name} | {date_range_str}"
+    info_style = ParagraphStyle(
+        'Info',
+        parent=styles['Normal'],
+        fontSize=12,
+        leading=14,
+        alignment=1,
+        fontName='Helvetica-Bold',
+    )
+    center_cell = [
+        Paragraph("PHS FOOTBALL POWER PROGRAM", title_style),
+        Paragraph(info_text, info_style),
+    ]
+
+    header_row = [[left_logo, center_cell, right_logo]]
+    header_table = Table(
+        header_row,
+        colWidths=[2.0*inch, 5.7*inch, 2.0*inch],
+        rowHeights=[1.10*inch],
+    )
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0, colors.white),
+    ]))
+    story.append(header_table)
+
+    story.append(Spacer(1, 0.4*inch))
+
+    # ---------- MAIN TABLE ----------
+    header = [
+        'EXERCISES',
+        'WEEK 1 TARGET', 'REPS',
+        'WEEK 2 TARGET', 'REPS',
+        'WEEK 3 TARGET', 'REPS',
+        'WEEK 4 TARGET', 'REPS',
+    ]
+    table_data = [header]
+
+    # Unique accessories per phase, no repeats across days
+    phase_index = MESOCYCLES.index(mesocycle)
+    phase_accessories = choose_phase_accessories_unique(phase_index)
+
+    day_row_ranges = [] 
+    row_idx = 1
+
+    day_order = [
+        ('Monday', 'MONDAY'),
+        ('Tuesday', 'TUESDAY'),
+        ('Wednesday', 'WEDNESDAY'),
+        ('Thursday', 'THURSDAY'),
+    ]
+
+    for day_name, day_label in day_order:
+        # Day bar row
+        day_bar = [day_label] + [''] * (len(header) - 1)
+        table_data.append(day_bar)
+        bar_idx = row_idx
+        row_idx += 1
+
+        start_idx = row_idx
+
+        # Main lift row
+        main_lift = MAIN_LIFTS[day_name]
+        max_key = MAIN_LIFT_MAXES[main_lift]
+        main_max = athlete['maxes'].get(max_key)
+
+        main_row = [main_lift]
+        for wk in range(1, weeks + 1):
+            intensity = get_phase_intensity(mesocycle, wk)
+            if main_max:
+                tw = calculate_target_weight(main_max, intensity)
+                txt = build_bold_target(
+                    f"{mesocycle['main_sets']}×{mesocycle['main_reps']} @",
+                    f"{int(tw)} lbs"
+                )
+            else:
+                txt = f"{mesocycle['main_sets']}×{mesocycle['main_reps']}"
+            main_row.extend([txt, ""])
+        table_data.append(main_row)
+        row_idx += 1
+
+        # Accessory rows
+        for acc in phase_accessories[day_name]:
+            name = acc['name']
+            acc_row = [name]
+            for wk in range(1, weeks + 1):
+                if acc['ref_max'] and acc['factor']:
+                    ref_max = athlete['maxes'].get(acc['ref_max'])
+                    if name in BODYWEIGHT_EXERCISES:
+                        txt = build_bold_target("3×10 @", "BW")
+                    elif ref_max:
+                        tw = calculate_target_weight(ref_max, acc['factor'])
+                        txt = build_bold_target("3×10 @", f"{int(tw)} lbs")
+                    else:
+                        txt = build_bold_target("3×10 @", "45 lbs")
+                else:
+                    txt = build_bold_target("3×10 @", "BW")
+                acc_row.extend([txt, ""])
+            table_data.append(acc_row)
+            row_idx += 1
+
+        end_idx = row_idx - 1
+        day_row_ranges.append((bar_idx, start_idx, end_idx))
+
+    normal_style = ParagraphStyle(
+        'Cell',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=9,
+        alignment=1,
+    )
+    for r in range(1, len(table_data)):
+        row = table_data[r]
+        for c in range(1, len(row), 2):  # target columns only
+            val = row[c]
+            if isinstance(val, str) and '<b>' in val:
+                row[c] = Paragraph(val, normal_style)
+
+    # Column widths
+    col_widths = [
+        1.8*inch,
+        1.3*inch, 0.8*inch,
+        1.3*inch, 0.8*inch,
+        1.3*inch, 0.8*inch,
+        1.3*inch, 0.8*inch,
+    ]
+
+    # Row heights
+    row_heights = [0.30*inch]  # header
+    for bar_idx, start_idx, end_idx in day_row_ranges:
+        while len(row_heights) < bar_idx:
+            row_heights.append(0.30*inch)
+        row_heights.append(0.25*inch)  # day bar
+        for _ in range(start_idx, end_idx + 1):
+            row_heights.append(0.30*inch)
+    while len(row_heights) < len(table_data):
+        row_heights.append(0.30*inch)
+
+    main_table = Table(table_data, colWidths=col_widths, rowHeights=row_heights)
+
+    base_style = [
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_BLACK),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
-    ]))
-    story.append(logo_table)
-    story.append(Spacer(1, 0.18 * inch))
 
-    block_name = meso_cfg['name']
-    info_text = f"<b>{athlete_name}</b> | <b>{block_name}</b> | <b>Week {local_week_number}</b> | {start_date.strftime('%b %d, %Y')}"
-    info_style = ParagraphStyle('InfoStyle', fontSize=13, textColor=COLOR_BLACK, alignment=1, spaceAfter=10)
-    story.append(Paragraph(info_text, info_style))
+        # Main header row: dark gold
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_DARK_GOLD),
+        ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_BLACK),
 
-    col_widths = [2.0 * inch, 0.5 * inch, 1.0 * inch, 0.9 * inch, 0.9 * inch, 1.4 * inch]
-    total_width = sum(col_widths)
+        # Body font
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
+        ('TOPPADDING', (0, 0), (-1, 0), 3),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
+        ('TOPPADDING', (0, 1), (-1, -1), 2),
 
-    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday']:
-        if day not in week_plan:
-            continue
+        # Bold exercise names
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+    ]
 
-        day_header_tbl = Table(
-            [[Paragraph(day, ParagraphStyle('DayStyle', fontSize=11, textColor=COLOR_GOLD))]],
-            colWidths=[total_width],
-        )
-        day_header_tbl.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), COLOR_BLACK),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ]))
-        story.append(day_header_tbl)
+    for bar_idx, start_idx, end_idx in day_row_ranges:
+        base_style.extend([
+            ('BACKGROUND', (0, bar_idx), (-1, bar_idx), COLOR_BLACK),
+            ('FONTNAME', (0, bar_idx), (-1, bar_idx), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, bar_idx), (-1, bar_idx), 9),
+            ('TEXTCOLOR', (0, bar_idx), (-1, bar_idx), colors.white),
+        ])
+        toggle = True
+        for r in range(start_idx, end_idx + 1):
+            bg = ROW_BG_LIGHT if toggle else ROW_BG_MED
+            base_style.append(
+                ('BACKGROUND', (0, r), (-1, r), bg)
+            )
+            toggle = not toggle
 
-        data = [['Exercise', 'Sets', 'Targeted Reps', 'Target Wt.', 'Actual Reps', 'Notes']]
-        for row in week_plan[day]:
-            name = row['exercise']
-            target = row['target_weight']
-            if name in BODYWEIGHT_EXERCISES:
-                weight_str = 'BW / Light'
-            else:
-                if target is None:
-                    weight_str = '45 lb'
-                else:
-                    weight_str = f"{target} lb"
-
-            data.append([
-                Paragraph(name, ParagraphStyle('Cell', fontSize=8)),
-                Paragraph(str(row['sets']), ParagraphStyle('Cell', fontSize=8, alignment=1)),
-                Paragraph(row['reps'], ParagraphStyle('Cell', fontSize=8, alignment=1)),
-                Paragraph(weight_str, ParagraphStyle('Cell', fontSize=8, alignment=1)),
-                Paragraph('', ParagraphStyle('Cell', fontSize=8, alignment=1)),
-                Paragraph(row['notes'], ParagraphStyle('NotesCell', fontSize=7.5, leading=8)),
-            ])
-
-        tbl = Table(data, colWidths=col_widths)
-        tbl.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), COLOR_GOLD),
-            ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_BLACK),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
-            ('TOPPADDING', (0, 0), (-1, 0), 3),
-
-            ('GRID', (0, 0), (-1, -1), 0.4, COLOR_BLACK),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 7.5),
-            ('VALIGN', (0, 1), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 1), (-1, -1), 3),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 3),
-            ('TOPPADDING', (0, 1), (-1, -1), 2),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
-
-            ('ALIGN', (1, 1), (4, -1), 'CENTER'),
-            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-            ('ALIGN', (5, 1), (5, -1), 'LEFT'),
-
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, COLOR_LIGHT_GOLD]),
-        ]))
-
-        story.append(tbl)
-        story.append(Spacer(1, 0.04 * inch))
+    main_table.setStyle(TableStyle(base_style))
+    story.append(main_table)
 
     doc.build(story)
+    print(f"  → {pdf_filename}")
+
+
+# =========================
+# MAIN
+# =========================
 
 def main():
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
+    print("\n=== PHS Football Power Program Workout Sheet Generator ===\n")
+    athletes = load_athletes(TESTING_DATA_FILE)
+    if not athletes:
+        print("No athletes found. Exiting.")
+        return
 
-    df = pd.read_csv(TESTING_DATA_FILE)
-    print(f"Loaded {len(df)} athletes from {TESTING_DATA_FILE}")
-
-    weekly_templates = {}
-    prev_accessories_by_day = {'Monday': None, 'Tuesday': None, 'Wednesday': None, 'Thursday': None}
-    global_week_counter = 1
-    for meso in MESOCYCLES:
-        for _ in range(meso['weeks']):
-            template, prev_accessories_by_day = generate_week_template_for_meso(
-                meso, global_week_counter, prev_accessories_by_day
-            )
-            weekly_templates[global_week_counter] = (meso, template)
-            global_week_counter += 1
-
-    for _, row in df.iterrows():
-        name = row['Name']
-        print(f"\n=== Generating workouts for {name} ===")
-
-        maxes = {
-            'Bench Press': clean_test_value(row.get('Bench Press')),
-            'Squat': clean_test_value(row.get('Squat')),
-            'Deadlift': clean_test_value(row.get('Deadlift')),
-            'Shoulder Press': clean_test_value(row.get('Shoulder Press')),
-        }
-        print(f"  Maxes: {maxes}")
-
-        athlete_folder = os.path.join(OUTPUT_DIR, name.replace(' ', '_'))
-        if not os.path.exists(athlete_folder):
-            os.makedirs(athlete_folder)
-
-        global_week = 1
+    print(f"Loaded {len(athletes)} athlete(s).\n")
+    for athlete in athletes:
+        print(f"Generating workouts for {athlete['name']}...")
+        print(f"  Maxes: BackSq={athlete['maxes']['Back Squat']}, "
+              f"BP={athlete['maxes']['Bench Press']}, "
+              f"DL={athlete['maxes']['Deadlift']}, "
+              f"OHP={athlete['maxes']['Shoulder Press']}")
         for meso in MESOCYCLES:
-            start_date = meso['start_date']
-            for local_week in range(1, meso['weeks'] + 1):
-                _, template = weekly_templates[global_week]
-                plan = instantiate_week_for_athlete(maxes, meso, global_week, template)
+            build_phase_pdf(athlete, meso)
+        print()
 
-                filename = os.path.join(
-                    athlete_folder,
-                    f"{name.replace(' ', '_')}_Week{global_week:02d}_{meso['name'].replace(' ', '')}.pdf"
-                )
-
-                build_week_pdf(
-                    filename=filename,
-                    athlete_name=name,
-                    meso_cfg=meso,
-                    global_week_number=global_week,
-                    local_week_number=local_week,
-                    start_date=start_date,
-                    week_plan=plan,
-                )
-
-                print(f"  Created: {filename}")
-
-                start_date += timedelta(days=7)
-                global_week += 1
-
-    print(f"\nAll PDFs generated in '{OUTPUT_DIR}' folder.")
+    print("✓ Complete!")
 
 if __name__ == '__main__':
     main()
