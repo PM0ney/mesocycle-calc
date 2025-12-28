@@ -56,7 +56,7 @@ EXERCISE_POOLS = {
                 'ref_max': 'Squat',
                 'factor': 'MAIN',
                 'is_core': True,
-                'notes': 'Main lift—focus on depth, tight core, and controlled descent.',
+                'notes': 'Main lift. Focus on hitting depth with a controlled descent. Pick spot on ceiling and stare.',
             },
         ],
         'accessories': [
@@ -96,7 +96,7 @@ EXERCISE_POOLS = {
                 'ref_max': 'Bench Press',
                 'factor': 'MAIN',
                 'is_core': True,
-                'notes': 'Main lift—touch the chest and press under control.',
+                'notes': 'Main lift. Touch the chest and press under control.',
             },
         ],
         'accessories': [
@@ -134,7 +134,7 @@ EXERCISE_POOLS = {
                 'ref_max': 'Deadlift',
                 'factor': 'MAIN',
                 'is_core': True,
-                'notes': 'Main lift. Bar close, flat back, feet anchored in floor.',
+                'notes': 'Main lift. Bar close, flat back, push floor away.',
             },
         ],
         'accessories': [
@@ -166,7 +166,7 @@ EXERCISE_POOLS = {
                 'ref_max': 'Shoulder Press',
                 'factor': 'MAIN',
                 'is_core': True,
-                'notes': 'Strict press; no leg drive, lock out overhead.',
+                'notes': 'Strict press. No leg drive, lock out overhead.',
             },
         ],
         'accessories': [
