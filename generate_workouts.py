@@ -160,7 +160,8 @@ EXERCISE_POOLS = {
     ],
     'Wednesday': [
         {'name': 'Deadlift', 'ref_max': 'Deadlift', 'factor': None}, # main lift
-        # {'name': 'Trap-Bar Deadlift', 'ref_max': 'Deadlift', 'factor': 0.90}, ### commenting out until trap bars are in the weight room
+        {'name': 'Trap-Bar Deadlift', 'ref_max': 'Deadlift', 'factor': 0.90},
+        {'name': 'Romanian Deadlift', 'ref_max': 'Deadlift', 'factor': 0.60},
         {'name': 'Single-Leg RDL', 'ref_max': 'Deadlift', 'factor': 0.35},
         {'name': 'Good Mornings', 'ref_max': 'Back Squat', 'factor': 0.40},
         {'name': 'Bulgarian Split Squat', 'ref_max': 'Back Squat', 'factor': 0.35},
@@ -450,7 +451,7 @@ def build_phase_pdf(athlete, mesocycle):
                     f"{int(tw)} lbs"
                 )
             else:
-                txt = f"{mesocycle['main_sets']}×{mesocycle['main_reps']}"
+                txt = f"{mesocycle['main_sets']}×{mesocycle['main_reps']} @ ______"
             main_row.extend([txt, ""])
         
         table_data.append(main_row)
@@ -484,7 +485,9 @@ def build_phase_pdf(athlete, mesocycle):
                             tw = calculate_target_weight(ref_max, final_factor, round_to=5)
                         txt = build_bold_target(f"{mesocycle['main_sets']}×{accessory_reps} @", f"{int(tw)} lbs")
                     else:
-                        txt = build_bold_target(f"{mesocycle['main_sets']}×{accessory_reps} @", "45 lbs")
+                        txt = f"{mesocycle['main_sets']}×{accessory_reps} @ ______"
+                else:
+                    txt = f"{mesocycle['main_sets']}×{accessory_reps} @ ______"
                 acc_row.extend([txt, ""])
             table_data.append(acc_row)
             row_idx += 1
@@ -496,7 +499,7 @@ def build_phase_pdf(athlete, mesocycle):
             for wk in range(1, weeks + 1):
                 if name in BODYWEIGHT_EXERCISES:
                     # Bodyweight exercises don't scale with weight progression
-                    txt = build_bold_target("3 sets @", "BW")
+                    txt = "3 sets @ BW"
                 elif acc['ref_max'] and acc['factor']:
                     ref_max = athlete['maxes'].get(acc['ref_max'])
                     if ref_max:
@@ -509,10 +512,10 @@ def build_phase_pdf(athlete, mesocycle):
                         tw = calculate_target_weight(ref_max, final_factor, round_to=5)
                         txt = build_bold_target(f"{mesocycle['main_sets']}×{accessory_reps} @", f"{int(tw)} lbs")
                     else:
-                        txt = build_bold_target(f"{mesocycle['main_sets']}×{accessory_reps} @", "45 lbs")
+                        txt = f"{mesocycle['main_sets']}×{accessory_reps} @ ______"
                 else:
                     # No ref_max or factor - bodyweight or unweighted
-                    txt = build_bold_target(f"{mesocycle['main_sets']} sets @", "BW")
+                    txt = f"{mesocycle['main_sets']} sets @ ______"
                 acc_row.extend([txt, ""])
             table_data.append(acc_row)
             row_idx += 1
@@ -598,12 +601,249 @@ def build_phase_pdf(athlete, mesocycle):
     doc.build(story)
     print(f" → {pdf_filename}")
 
+
+def build_blank_phase_pdf(mesocycle):
+    """
+    Build a blank workout sheet with exercise names but no calculated weights.
+    Athletes can fill in their own weights.
+    """
+    phase_name = mesocycle['name']
+    phase_start = mesocycle['start_date']
+    weeks = mesocycle['weeks']
+    phase_end = phase_start + timedelta(days=weeks * 7 - 1)
+    
+    blank_dir = os.path.join(OUTPUT_DIR, 'BLANK_SHEETS')
+    os.makedirs(blank_dir, exist_ok=True)
+    
+    pdf_filename = os.path.join(
+        blank_dir,
+        f"BLANK_{phase_name.replace(' ', '')}.pdf"
+    )
+    
+    doc = SimpleDocTemplate(
+        pdf_filename,
+        pagesize=landscape(letter),
+        topMargin=0.25 * inch,
+        bottomMargin=0.25 * inch,
+        leftMargin=0.25 * inch,
+        rightMargin=0.25 * inch,
+    )
+    
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # ---------- HEADER ----------
+    
+    if os.path.exists(LOGO_FILE):
+        left_logo = Image(LOGO_FILE, width=1.0*inch, height=1.0*inch)
+        right_logo = Image(LOGO_FILE, width=1.0*inch, height=1.0*inch)
+    else:
+        left_logo = Paragraph(" ", styles['Normal'])
+        right_logo = Paragraph(" ", styles['Normal'])
+    
+    title_style = ParagraphStyle(
+        'TitleLarge',
+        parent=styles['Heading1'],
+        fontSize=20,
+        leading=22,
+        alignment=1,
+        fontName='Helvetica-Bold',
+        spaceAfter=4,
+    )
+    
+    date_range_str = f"{phase_start.strftime('%b %d')} – {phase_end.strftime('%b %d, %Y')}"
+    info_text = f"ATHLETE NAME: ________________ | {phase_name} | {date_range_str}"
+    
+    info_style = ParagraphStyle(
+        'Info',
+        parent=styles['Normal'],
+        fontSize=12,
+        leading=14,
+        alignment=1,
+        fontName='Helvetica-Bold',
+    )
+    
+    center_cell = [
+        Paragraph("PHS FOOTBALL POWER PROGRAM", title_style),
+        Paragraph(info_text, info_style),
+    ]
+    
+    header_row = [[left_logo, center_cell, right_logo]]
+    header_table = Table(
+        header_row,
+        colWidths=[2.0*inch, 5.7*inch, 2.0*inch],
+        rowHeights=[1.10*inch],
+    )
+    
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0, colors.white),
+    ]))
+    
+    story.append(header_table)
+    story.append(Spacer(1, 0.4*inch))
+    
+    # ---------- MAIN TABLE ----------
+    
+    header = [
+        'EXERCISES',
+        'WEEK 1 TARGET', 'REPS',
+        'WEEK 2 TARGET', 'REPS',
+        'WEEK 3 TARGET', 'REPS',
+        'WEEK 4 TARGET', 'REPS',
+    ]
+    
+    table_data = [header]
+    
+    # Get the same exercise structure as athlete sheets (use phase index 0 for blank structure)
+    phase_index = MESOCYCLES.index(mesocycle)
+    phase_accessories = choose_phase_accessories_unique(phase_index, mesocycle)
+    
+    day_row_ranges = []
+    row_idx = 1
+    
+    day_order = [
+        ('Monday', 'MONDAY'),
+        ('Tuesday', 'TUESDAY'),
+        ('Wednesday', 'WEDNESDAY'),
+        ('Thursday', 'THURSDAY'),
+    ]
+    
+    for day_name, day_label in day_order:
+        # Day bar row
+        day_bar = [day_label] + [''] * (len(header) - 1)
+        table_data.append(day_bar)
+        bar_idx = row_idx
+        row_idx += 1
+        start_idx = row_idx
+        
+        # Main lift row
+        main_lift = MAIN_LIFTS[day_name]
+        main_row = [main_lift]
+        for wk in range(1, weeks + 1):
+            txt = f"{mesocycle['main_sets']}×{mesocycle['main_reps']} @ ______"
+            main_row.extend([txt, ""])
+        
+        table_data.append(main_row)
+        row_idx += 1
+        
+        # Accessory rows
+        accessory_reps = get_accessory_reps(mesocycle)
+        
+        # First, add guaranteed accessories if they exist for this day
+        guaranteed_accs = GUARANTEED_ACCESSORIES.get(day_name, [])
+        for acc in guaranteed_accs:
+            name = acc['name']
+            acc_row = [name]
+            for wk in range(1, weeks + 1):
+                txt = f"{mesocycle['main_sets']}×{accessory_reps} @ ______"
+                acc_row.extend([txt, ""])
+            table_data.append(acc_row)
+            row_idx += 1
+        
+        # Then add random accessories for this day
+        for acc in phase_accessories[day_name]:
+            name = acc['name']
+            acc_row = [name]
+            for wk in range(1, weeks + 1):
+                if name in BODYWEIGHT_EXERCISES:
+                    txt = "3 sets @ BW"
+                else:
+                    txt = f"{mesocycle['main_sets']}×{accessory_reps} @ ______"
+                acc_row.extend([txt, ""])
+            table_data.append(acc_row)
+            row_idx += 1
+        
+        end_idx = row_idx - 1
+        day_row_ranges.append((bar_idx, start_idx, end_idx))
+    
+    normal_style = ParagraphStyle(
+        'Cell',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=9,
+        alignment=1,
+    )
+    
+    for r in range(1, len(table_data)):
+        row = table_data[r]
+        for c in range(1, len(row), 2): # target columns only
+            val = row[c]
+            if isinstance(val, str):
+                row[c] = Paragraph(val, normal_style)
+    
+    # Column widths
+    col_widths = [
+        1.8*inch,
+        1.3*inch, 0.8*inch,
+        1.3*inch, 0.8*inch,
+        1.3*inch, 0.8*inch,
+        1.3*inch, 0.8*inch,
+    ]
+    
+    # Row heights
+    row_heights = [0.30*inch] # header
+    for bar_idx, start_idx, end_idx in day_row_ranges:
+        while len(row_heights) < bar_idx:
+            row_heights.append(0.30*inch)
+        row_heights.append(0.25*inch) # day bar
+        for _ in range(start_idx, end_idx + 1):
+            row_heights.append(0.30*inch)
+    while len(row_heights) < len(table_data):
+        row_heights.append(0.30*inch)
+    
+    main_table = Table(table_data, colWidths=col_widths, rowHeights=row_heights)
+    
+    base_style = [
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_BLACK),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        # Main header row: dark gold
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_DARK_GOLD),
+        ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_BLACK),
+        # Body font
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
+        ('TOPPADDING', (0, 0), (-1, 0), 3),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
+        ('TOPPADDING', (0, 1), (-1, -1), 2),
+        # Bold exercise names
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+    ]
+    
+    for bar_idx, start_idx, end_idx in day_row_ranges:
+        base_style.extend([
+            ('BACKGROUND', (0, bar_idx), (-1, bar_idx), COLOR_BLACK),
+            ('FONTNAME', (0, bar_idx), (-1, bar_idx), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, bar_idx), (-1, bar_idx), 9),
+            ('TEXTCOLOR', (0, bar_idx), (-1, bar_idx), colors.white),
+        ])
+        
+        toggle = True
+        for r in range(start_idx, end_idx + 1):
+            bg = ROW_BG_LIGHT if toggle else ROW_BG_MED
+            base_style.append(
+                ('BACKGROUND', (0, r), (-1, r), bg)
+            )
+            toggle = not toggle
+    
+    main_table.setStyle(TableStyle(base_style))
+    story.append(main_table)
+    
+    doc.build(story)
+    print(f" → {pdf_filename}")
+
 # =========================
 # MAIN
 # =========================
 
 def main():
-    print("\n=== PHS Football Power Program Workout Sheet Generator ===\n")
+    print("\n=== PHS FOOTBALL POWER PROGRAM Workout Sheet Generator ===\n")
     
     athletes = load_athletes(TESTING_DATA_FILE)
     if not athletes:
@@ -622,7 +862,13 @@ def main():
             build_phase_pdf(athlete, meso)
         print()
     
-    print("✓ Complete!")
+    # Generate blank sheets for each phase
+    print("Generating blank sheets for new athletes...\n")
+    for meso in MESOCYCLES:
+        print(f"Generating blank {meso['name']} sheet...")
+        build_blank_phase_pdf(meso)
+    
+    print("\n✓ Complete!")
 
 if __name__ == '__main__':
     main()
